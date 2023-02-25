@@ -177,7 +177,7 @@ ciDF <- data.frame(year = c(2023:2032),
                    upper = preds$fcst$bloom_doy[,3],
                    ci    = preds$fcst$bloom_doy[,4])
 historyDF <- data.frame(year = c(1961:2022),  
-                        bloom_doy = annualWithPreds[(1:(nrow(df))),7])
+                        bloom_doy = annualWithPreds[(1:(nrow(annualWithPreds)-1)),7])
 
 results <- rbind(predsDF, historyDF)
 results <- results[order(results$year),]
@@ -190,7 +190,7 @@ lines(ciDF$year,ciDF$upper, col = "blue")
 ## Results
 
 ```{r}
-kyoto_preds <- data.frame(year = predsDF$year, kyoto = predsDF$bloom_doy)
+kyoto_preds <- data.frame(year = predsDF$year, kyoto = round(predsDF$bloom_doy))
 write.csv(kyoto_preds, "./kyoto_preds.csv",row.names = F)
 ```
 
