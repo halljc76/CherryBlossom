@@ -1,0 +1,139 @@
+---
+title: "cherry_bloom_prediction"
+output: html_document
+date: '2023-01-15'
+---
+
+Installing Packages
+```{r}
+library(pipeR)
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(ncdf4)
+library(ncdf4.helpers)
+library(lubridate)
+library(plotly)
+library(PCICt)
+library(glmnet)
+```
+
+
+loading and cleaning data
+```{r}
+dc_cherry <- read.csv("data/washingtondc.csv")
+dc_gsom <- read.csv("data/DC_data.csv")%>>%
+  select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
+
+kyoto_cherry <- read.csv("data/kyoto.csv")
+kyoto_gsom <- read.csv("data/Kyoto_data.csv")%>>%
+  select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
+
+liestal_cherry <- read.csv("data/liestal.csv")
+liestal_gsom <- read.csv("data/Liestal_data.csv")%>>%
+  select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
+
+vancover_gsom <- read.csv("data/vancover_gsom.csv")%>>%
+  select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
+
+data_cleaning <- function(cherry_data, gsom_data, name){
+  
+  less_than_500_col <- colSums(is.na(gsom_data)) %>>%
+  subset(.<500)%>>%
+  names()
+  
+  gsmo_data <- select(gsom_data, less_than_500_col)
+  
+  YEAR <- as.numeric(substr(gsom_data$DATE, 1, 4))
+  MONTH <- as.numeric(substr(gsom_data$DATE, 6, 7))
+  
+  gsom_data <- cbind(YEAR, MONTH, gsom_data[,-1])
+  gsom_data$NAME <- name
+  
+  start_year <- max(min(cherry_data$year), min(gsom_data$YEAR))
+  end_year <- min(max(cherry_data$year), max(gsom_data$YEAR))
+  
+  gsom_data <- subset(gsom_data, YEAR <= end_year & YEAR >= start_year)
+  cherry_data <- subset(cherry_data, year <= end_year & year >= start_year)
+  
+  GSOM_YEAR <- data_frame()
+  
+  for (i in unique(gsom_data$YEAR)) {
+  annual_GSOM <- subset(gsom_data, YEAR == i)
+  col_means <- as.numeric(colMeans(annual_GSOM[,-6]))
+  GSOM_YEAR <- rbind(GSOM_YEAR, col_means)
+  }
+  
+  GSOM_YEAR <- cbind(rep(name,nrow(GSOM_YEAR)), GSOM_YEAR)
+  colnames(GSOM_YEAR) <- c("LOCATION", colnames(gsom_data[,-6]))
+  
+  bind_data <- merge(x = cherry_data, y = GSOM_YEAR, by.x = c("location", "year"), by.y = c("LOCATION", "YEAR"))
+  
+  valid_predictors <- colSums(is.na(bind_data)) %>>%
+    subset(.<30)%>>%
+    names()
+  
+  select(bind_data, valid_predictors)
+}
+
+data_cleaning_vancover <- function(gsom_data, name){
+  
+  less_than_500_col <- colSums(is.na(gsom_data)) %>>%
+  subset(.<500)%>>%
+  names()
+  
+  gsmo_data <- select(gsom_data, less_than_500_col)
+  
+  YEAR <- as.numeric(substr(gsom_data$DATE, 1, 4))
+  MONTH <- as.numeric(substr(gsom_data$DATE, 6, 7))
+  
+  gsom_data <- cbind(YEAR, MONTH, gsom_data[,-1])
+  gsom_data$NAME <- name
+
+  
+  GSOM_YEAR <- data_frame()
+  
+  for (i in unique(gsom_data$YEAR)) {
+  annual_GSOM <- subset(gsom_data, YEAR == i)
+  col_means <- as.numeric(colMeans(annual_GSOM[,-6]))
+  GSOM_YEAR <- rbind(GSOM_YEAR, col_means)
+  }
+  
+  GSOM_YEAR <- cbind(rep(name,nrow(GSOM_YEAR)), GSOM_YEAR)
+  colnames(GSOM_YEAR) <- c("LOCATION", colnames(gsom_data[,-6]))
+  
+  valid_predictors <- colSums(is.na(GSOM_YEAR)) %>>%
+    subset(.<20)%>>%
+    names()
+  
+  select(GSOM_YEAR, valid_predictors)
+}
+
+
+
+
+
+vancover_cleaned <- data_cleaning_vancover(vancover_gsom, "vancover")
+
+write.csv(vancover_cleaned, "vancover_cleaned.csv")
+write.csv(dc_cleaned, "dc_cleaned.csv")
+write.csv(liestal_cleaned, "liestal_cleaned.csv")
+write.csv(kyoto_cleaned, "kyoto_cleaned.csv")
+
+dc_cleaned <- data_cleaning(dc_cherry, dc_gsom, "washingtondc")
+kyoto_cleaned <- data_cleaning(kyoto_cherry, kyoto_gsom, "kyoto")
+liestal_cleaned <- data_cleaning(liestal_cherry, liestal_gsom, "liestal")
+
+common_predictors <- intersect(names(dc_cleaned), names(kyoto_cleaned)) %>>%
+  intersect(names(liestal_cleaned))
+
+all_three_cities <- select(dc_cleaned, common_predictors) %>%
+  rbind(select(kyoto_cleaned, common_predictors)) %>%
+  rbind(select(liestal_cleaned, common_predictors)) %>%
+  select(-bloom_date)
+
+all_three_cities$location <- as.factor(all_three_cities$location)
+all_three_cities[is.na(all_three_cities)] <- 0
+
+write.csv(all_three_cities, "combined_data.csv")
+```
