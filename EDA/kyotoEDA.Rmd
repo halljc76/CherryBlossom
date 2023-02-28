@@ -116,7 +116,7 @@ get_forecasted_data <- function(df, annual_is_average = T) {
 ## Reading, Cleaning Data
 
 ```{r}
-kyoto <- read.csv("./data/kyoto.csv")
+kyoto <- read.csv("../data/kyoto.csv")
 kyoto_sunshine_hour <- suppressWarnings(remove_non_numeric("./data/Kyoto_data_bowen.xlsx",
                                          sheet = "Monthly Sunshine Hour") %>%
   get_forecasted_data(annual_is_average = F)) %>% filter(Year >= 1961)
@@ -162,7 +162,7 @@ data <- annualWithPreds[1:(nrow(annualWithPreds)-1),]
 
 # Convert data to a time series object
 y <- ts(data, start = 1961, end = 2022, frequency = 1)
-jo <- ca.jo(y, type = "eigen", ecdet = "none", K = 3, spec = "longrun")
+jo <- ca.jo(y, type = "eigen", ecdet = "trend", K = 4, spec = "longrun")
 
 # Estimate VECM model
 vecm <- vec2var(jo, r = 2)

@@ -1,0 +1,206 @@
+---
+title: "Vancouver"
+output: html_notebook
+---
+
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(forecast)
+library(zoo)
+library(vars)
+library(glmnet)
+```
+
+
+# Functions
+```{r}
+get_forecasted_data <- function(df, annual_is_average = T) {
+  # Given a dataframe of monthly observations with the current year partially
+  # filled in, forecast any NA values from months that have not yet been recorded
+  # in the current year.
+  
+  forecasts <- c() # Store forecasts for this year
+  
+  for (col in colnames(df)[-c(1,ncol(df))]) { # For each month
+    
+    # Impute historical NA
+    df[[col]][1:nrow(df)-1] <- na.aggregate(df[[col]][1:nrow(df)-1], FUN = mean) 
+    
+    # If month has not happened yet,
+    if (is.na(df[[col]][nrow(df)])) {
+    
+      # Make time series with annual frequency
+      temp <- ts(df[[col]][1:nrow(df)-1],frequency = 1) # Monthly data
+      
+      # Fit an ARIMA(p,d,q) model
+      ts <- auto.arima(temp) 
+      
+      # Forecast the next observation 
+      forecasted <- forecast(object = ts) # Forecast the observation
+      forecasted <- forecasted$mean[length(forecasted$mean)]
+      forecasts <- append(forecasts, forecasted)
+    } else {
+      forecasts <- append(forecasts, df[[col]][nrow(df)]) 
+    }
+  }
+  
+  if (annual_is_average) {
+      # Ensure no 'annual' values are 'na'
+      for (j in 1:(nrow(df)-1)) {
+        if (is.na(df[j,ncol(df)])) {
+          df[j,ncol(df)] <- sum(df[j,2:(ncol(df)-1)]) / length(2:(ncol(df)-1))
+        }
+      }
+    df[nrow(df),2:ncol(df)] <- c(forecasts, mean(forecasts))
+  } else {
+    # Ensure no 'annual' values are 'na'
+    for (j in 1:(nrow(df)-1)) {
+      if (is.na(df[j,ncol(df)])) {
+        df[j,ncol(df)] <- sum(na.omit(df[j,2:(ncol(df)-1)]))
+      }
+    }
+    df[nrow(df),2:ncol(df)] <- c(forecasts, sum(forecasts))
+  }
+  return(df)
+}
+
+one_hot_encode <- function(df) {
+  factor_cols <- sapply(df, is.factor)
+  
+  if (sum(factor_cols) == 0) {
+    message("No factor columns found.")
+    return(df)
+  }
+  
+  df_encoded <- df[, !factor_cols, drop = FALSE]
+  
+  for (col_name in names(df)[factor_cols]) {
+    col_levels <- levels(df[[col_name]])
+    col_dummy <- matrix(0, nrow = nrow(df), ncol = length(col_levels), 
+                        dimnames = list(NULL, paste0(col_name, "_", col_levels)))
+    
+    for (i in 1:length(col_levels)) {
+      col_dummy[, i] <- as.integer(df[[col_name]] == col_levels[i])
+    }
+    
+    df_encoded <- cbind(df_encoded, col_dummy)
+  }
+  
+  return(df_encoded)
+}
+
+tune_alpha <- function(X, y, nfolds = 10, alpha_seq = seq(0, 1, 0.05)) {
+  # Initialize empty vectors to store results
+  mse <- rep(NA, length(alpha_seq))
+  
+  # Loop over alpha values and calculate cross-validated mean squared error
+  for (i in seq_along(alpha_seq)) {
+    cv_fit <- cv.glmnet(X, y, alpha = alpha_seq[i], nfolds = nfolds)
+    mse[i] <- cv_fit$cvm[which.min(cv_fit$cvm)]
+  }
+  
+  # Find alpha that gives lowest cross-validated mean squared error
+  best_alpha <- alpha_seq[which.min(mse)]
+  
+  # Return results
+  return(list(alpha = best_alpha, mse = mse))
+}
+```
+
+# Data
+```{r}
+vanc <- data.frame(read.csv("../data/vancover_cleaned.csv")[-1,-1])
+comb <- data.frame(read.csv("../data/combined_data.csv")[-1,-1]) 
+
+vanc <- vanc %>% get_forecasted_data() %>% mutate(
+  YRSAGO = 2023 - YEAR,
+  ELEVATION = ELEVATION,
+  VANCDIST = 0
+) %>% dplyr::select(-c("LOCATION"))
+
+comb <- comb %>% get_forecasted_data() %>% dplyr::select(-c("lat", "long", "alt")) %>% mutate(
+  YRSAGO = 2023 - year,
+  ELEVATION = ELEVATION,
+  VANCDIST = sqrt((LATITUDE^2) + (LONGITUDE^2))
+) %>% dplyr::select(-c("location")) %>% rename(YEAR = year)
+```
+
+```{r}
+print(colnames(comb))
+print(colnames(vanc))
+
+train <- comb[,c(colnames(vanc),"bloom_doy")] %>% dplyr::select(-c("YEAR","MONTH"))
+test <- vanc %>% dplyr::select(-c("YEAR","MONTH"))
+```
+
+```{r}
+# tune_alpha(
+#   X = as.matrix(scale(train %>% dplyr::select(-c("bloom_doy")) %>% one_hot_encode())),
+#   y = train$bloom_doy
+# )
+
+model <- cv.glmnet(
+  x = as.matrix(train %>% dplyr::select(-c("bloom_doy"))),
+  y = train$bloom_doy,
+  alpha = 0,
+  nfolds = 15
+)
+
+model
+```
+
+```{r}
+nonunique <- sapply(colnames(test), FUN = function(c){length(unique(test[[c]])) > 1})
+newx <- as.matrix(cbind(scale(test[nonunique]), test[!nonunique]))
+
+vanc <- vanc %>% mutate(
+  bloom_doy = predict(model, newx = newx, s = model$lambda.min)[,"s1"]
+) %>% dplyr::select(-c("VANCDIST"))
+
+vanc
+```
+
+
+```{r}
+# Load data from a data frame
+data <- vanc[3:nrow(vanc),] %>% dplyr::select(-c("MONTH", "LATITUDE", "LONGITUDE", "ELEVATION", "YEAR"))
+data <- cbind(data[2:(ncol(data)-1)], bloom_doy = data$bloom_doy)
+
+# Convert data to a time series object
+y <- ts(data, start = 1977, end = 2022, frequency = 1)
+jo <- ca.jo(y, type = "eigen", ecdet = "const", K = 2, spec = "longrun")
+
+# Estimate VECM model
+vecm <- vec2var(jo, r = 2)
+
+
+preds <- predict(vecm, n.ahead = 10)
+predsDF <- data.frame(year = c(2023:2032), 
+                      bloom_doy = preds$fcst$bloom_doy[,1])
+
+ciDF <- data.frame(year = c(2023:2032),
+                   lower = preds$fcst$bloom_doy[,2],
+                   upper = preds$fcst$bloom_doy[,3],
+                   ci    = preds$fcst$bloom_doy[,4])
+historyDF <- data.frame(year = c(1977:2022),  
+                        bloom_doy = data[,ncol(data)])
+
+results <- rbind(predsDF, historyDF)
+results <- results[order(results$year,decreasing = F),]
+plot(results$year, results$bloom_doy, "l", ylim = c(75,95), xlab = "Year", 
+     ylab = "bloom_doy", main = "VECM Forecast of Bloom DOY")
+lines(ciDF$year,ciDF$lower, col = "blue")
+lines(ciDF$year,ciDF$upper, col = "blue")
+```
+
+```{r}
+vanc_preds <- data.frame(year = predsDF$year, vancouver = round(predsDF$bloom_doy))
+write.csv(vanc_preds, "./vanc_preds.csv",row.names = F)
+```
+
