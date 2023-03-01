@@ -110,7 +110,7 @@ plot(results$year, results$bloom_doy, "l", ylim = c(0,120), xlab = "Year",
 lines(ciDF$year,ciDF$lower, col = "blue")
 lines(ciDF$year,ciDF$upper, col = "blue")
 
-dc_preds <- data.frame(year = predsDF$year, dc = round(predsDF$bloom_doy))
+dc_preds <- data.frame(year = predsDF$year, washingtondc = round(predsDF$bloom_doy))
 write.csv(dc_preds, "./dc_preds.csv",row.names = F)
 
 

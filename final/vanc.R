@@ -165,10 +165,10 @@ data <- cbind(data[2:(ncol(data)-1)], bloom_doy = data$bloom_doy)
 
 # Convert data to a time series object
 y <- ts(data, start = 1977, end = 2022, frequency = 1)
-jo <- ca.jo(y, type = "eigen", ecdet = "const", K = 2, spec = "longrun")
+jo <- ca.jo(y, type = "eigen", ecdet = "const", K = 3, spec = "longrun")
 
 # Estimate VECM model
-vecm <- vec2var(jo, r = 2)
+vecm <- vec2var(jo, r = 3)
 
 
 preds <- predict(vecm, n.ahead = 10)
