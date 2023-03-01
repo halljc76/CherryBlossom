@@ -21,19 +21,19 @@ library(glmnet)
 
 loading and cleaning data
 ```{r}
-dc_cherry <- read.csv("data/washingtondc.csv")
-dc_gsom <- read.csv("data/DC_data.csv")%>>%
+dc_cherry <- read.csv("../data/washingtondc.csv")
+dc_gsom <- read.csv("../data/DC_data_GSOM.csv")%>>%
   select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
 
-kyoto_cherry <- read.csv("data/kyoto.csv")
-kyoto_gsom <- read.csv("data/Kyoto_data.csv")%>>%
+kyoto_cherry <- read.csv("../data/kyoto.csv")
+kyoto_gsom <- read.csv("../data/Kyoto_data_GSOM.csv")%>>%
   select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
 
-liestal_cherry <- read.csv("data/liestal.csv")
-liestal_gsom <- read.csv("data/Liestal_data.csv")%>>%
+liestal_cherry <- read.csv("../data/liestal.csv")
+liestal_gsom <- read.csv("../data/Liestal_data_GSOM.csv")%>>%
   select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
 
-vancover_gsom <- read.csv("data/vancover_gsom.csv")%>>%
+vancover_gsom <- read.csv("../data/vancover_GSOM.csv")%>>%
   select(-"STATION", -colnames( .)[endsWith(colnames( .), "_ATTRIBUTES")])
 
 data_cleaning <- function(cherry_data, gsom_data, name){
